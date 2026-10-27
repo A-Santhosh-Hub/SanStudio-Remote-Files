@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="robots" content="noindex, nofollow"/>
+<title>SanStudio · Files Access</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0f;--bg2:#111118;--bg3:#18181f;--border:#23232e;
+  --accent:#f5a623;--accent2:#e07b1a;--dim:#555566;--muted:#888899;
+  --text:#e8e8f0;--danger:#e05555;--green:#5be082;
+}
+body{
+  font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);
+  min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:16px;gap:20px;
+}
+.box{
+  width:100%;max-width:400px;background:var(--bg2);
+  border:1px solid var(--border);border-radius:16px;padding:32px 28px;
+  box-shadow:0 32px 80px rgba(0,0,0,.8);
+}
+.logo{font-size:1.3rem;font-weight:800;margin-bottom:6px}
+.logo span{color:var(--accent)}
+.sub{color:var(--muted);font-size:.85rem;margin-bottom:24px}
+input[type=password]{
+  width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;
+  color:var(--text);font-family:'DM Mono',monospace;font-size:.95rem;
+  padding:12px 14px;outline:none;margin-bottom:12px;
+}
+input[type=password]:focus{border-color:var(--accent)}
+.remember{
+  display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted);
+  margin-bottom:16px;cursor:pointer;user-select:none;
+}
+.remember input{accent-color:var(--accent);width:16px;height:16px}
+.btn{
+  display:block;width:100%;padding:12px;border:none;border-radius:8px;cursor:pointer;
+  background:var(--accent);color:#000;font-family:'Syne',sans-serif;font-weight:700;font-size:.95rem;
+  text-align:center;text-decoration:none;
+}
+.btn:hover{background:var(--accent2)}
+.btn:disabled{opacity:.6;cursor:wait}
+.btn-ghost{
+  background:var(--bg3);color:var(--muted);border:1px solid var(--border);margin-top:10px;
+}
+.btn-ghost:hover{background:var(--border);color:var(--text)}
+.msg{font-size:.85rem;margin-bottom:14px;border-left:3px solid var(--danger);padding-left:10px;color:var(--danger)}
+.hidden{display:none}
+
+.status{
+  display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:700;margin-bottom:16px;
+}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--dim)}
+.online .dot{background:var(--green);box-shadow:0 0 10px var(--green)}
+.online{color:var(--green)}
+.offline .dot{background:var(--danger)}
+.offline{color:var(--danger)}
+.link{
+  font-family:'DM Mono',monospace;font-size:.78rem;color:var(--accent);
+  background:var(--bg3);border:1px solid var(--border);border-radius:8px;
+  padding:10px 12px;word-break:break-all;margin-bottom:12px;
+}
+.meta{font-family:'DM Mono',monospace;font-size:.72rem;color:var(--muted);line-height:1.7;margin-bottom:18px}
+.hint{font-size:.78rem;color:var(--muted);margin-top:14px;line-height:1.5}
+
+footer{font-size:.78rem;color:var(--dim)}
+footer a{color:var(--accent);text-decoration:none;font-weight:700}
+</style>
+</head>
+<body>
+
+<!-- Step 1: viewer password -->
+<form class="box" id="login-box">
+  <div class="logo">San<span>Studio</span> Files</div>
+  <p class="sub">Enter access password to get the server link</p>
+  <p class="msg hidden" id="login-msg"></p>
+  <input type="password" id="password" placeholder="Access password" autocomplete="current-password" required autofocus/>
+  <label class="remember"><input type="checkbox" id="remember"/> Remember on this device</label>
+  <button class="btn" id="unlock-btn" type="submit">Unlock</button>
+</form>
+
+<!-- Step 2: current link -->
+<div class="box hidden" id="link-box">
+  <div class="logo">San<span>Studio</span> Files</div>
+  <div class="status" id="status"><span class="dot"></span><span id="status-text">Checking…</span></div>
+  <div class="link" id="link"></div>
+  <div class="meta" id="meta"></div>
+  <a class="btn" id="open-btn" href="#" target="_blank" rel="noopener noreferrer">Open my files ↗</a>
+  <button class="btn btn-ghost" id="copy-btn" type="button">Copy link</button>
+  <button class="btn btn-ghost" id="refresh-btn" type="button">Refresh</button>
+  <button class="btn btn-ghost" id="lock-btn" type="button">Lock</button>
+  <p class="hint">The server will ask for its own password after you open the link.</p>
+</div>
+
+<footer>Developed by <a href="https://a-santhosh-hub.github.io/in/" target="_blank" rel="noopener noreferrer">SanStudio</a></footer>
+
+<script>
+// ▼▼▼ PASTE YOUR APPS SCRIPT WEB APP URL HERE (ends with /exec) ▼▼▼
+// It's safe to publish. The tool_secret must NEVER be in this file.
+const API_URL = "PASTE_WEB_APP_URL_HERE";
+const ONLINE_MINUTES = 12;   // office PC checks in every 5 min
+const STORE_KEY = "sanstudio_access_pw";
+
+const $ = id => document.getElementById(id);
+let password = "";
+
+function store(action, value){
+  try{
+    if(action==="get") return localStorage.getItem(STORE_KEY) || "";
+    if(action==="set") localStorage.setItem(STORE_KEY, value);
+    if(action==="clear") localStorage.removeItem(STORE_KEY);
+  }catch(e){}
+  return "";
+}
+
+function ago(iso, now){
+  if(!iso) return "never";
+  const mins = Math.round((now - new Date(iso)) / 60000);
+  if(mins < 1) return "just now";
+  if(mins < 60) return `${mins} min ago`;
+  const h = Math.round(mins / 60);
+  if(h < 48) return `${h} hr ago`;
+  return `${Math.round(h / 24)} days ago`;
+}
+
+async function fetchLink(pw){
+  if(!API_URL.startsWith("https://script.google.com/")){
+    return {ok:false, error:"Setup needed: paste your Apps Script URL into API_URL in index.html."};
+  }
+  // text/plain keeps this a "simple" request, so Apps Script doesn't need CORS preflight
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: {"Content-Type": "text/plain;charset=utf-8"},
+    body: JSON.stringify({action: "get", password: pw}),
+  });
+  return res.json();
+}
+
+function showLogin(msg){
+  $("link-box").classList.add("hidden");
+  $("login-box").classList.remove("hidden");
+  $("login-msg").textContent = msg || "";
+  $("login-msg").classList.toggle("hidden", !msg);
+  $("password").focus();
+}
+
+function showLink(data){
+  const now = new Date(data.now || Date.now());
+  const seenMins = data.last_seen ? (now - new Date(data.last_seen)) / 60000 : Infinity;
+  const online = seenMins <= ONLINE_MINUTES;
+
+  $("status").className = "status " + (online ? "online" : "offline");
+  $("status-text").textContent = online ? "Server online" : "Server offline (office PC may be off)";
+  $("link").textContent = data.link || "No link yet";
+  $("meta").innerHTML = "";
+  [`Link updated: ${ago(data.updated_at, now)}`, `Last check-in: ${ago(data.last_seen, now)}`].forEach(t=>{
+    const d = document.createElement("div"); d.textContent = t; $("meta").appendChild(d);
+  });
+
+  const valid = /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(data.link || "");
+  $("open-btn").href = valid ? data.link + "/login" : "#";
+  $("open-btn").classList.toggle("hidden", !valid);
+  $("copy-btn").classList.toggle("hidden", !valid);
+
+  $("login-box").classList.add("hidden");
+  $("link-box").classList.remove("hidden");
+}
+
+async function unlock(pw){
+  $("unlock-btn").disabled = true;
+  $("unlock-btn").textContent = "Checking…";
+  try{
+    const data = await fetchLink(pw);
+    if(!data.ok){
+      store("clear");
+      showLogin(data.error || "Something went wrong.");
+      return;
+    }
+    password = pw;
+    if($("remember").checked) store("set", pw);
+    showLink(data);
+  }catch(e){
+    showLogin("Can't reach the server list. Check your internet and try again.");
+  }finally{
+    $("unlock-btn").disabled = false;
+    $("unlock-btn").textContent = "Unlock";
+  }
+}
+
+$("login-box").addEventListener("submit", e=>{
+  e.preventDefault();
+  unlock($("password").value);
+});
+
+$("refresh-btn").addEventListener("click", async ()=>{
+  $("refresh-btn").textContent = "Refreshing…";
+  try{
+    const data = await fetchLink(password);
+    if(data.ok) showLink(data); else showLogin(data.error);
+  }catch(e){}
+  $("refresh-btn").textContent = "Refresh";
+});
+
+$("copy-btn").addEventListener("click", async ()=>{
+  try{
+    await navigator.clipboard.writeText($("link").textContent);
+    $("copy-btn").textContent = "Copied ✓";
+  }catch(e){
+    $("copy-btn").textContent = "Copy failed — long-press the link";
+  }
+  setTimeout(()=>$("copy-btn").textContent = "Copy link", 2000);
+});
+
+$("lock-btn").addEventListener("click", ()=>{
+  password = "";
+  store("clear");
+  $("password").value = "";
+  showLogin();
+});
+
+// Auto-unlock if the password was remembered on this device
+const saved = store("get");
+if(saved){
+  $("remember").checked = true;
+  $("password").value = saved;
+  unlock(saved);
+}
+</script>
+</body>
+</html>

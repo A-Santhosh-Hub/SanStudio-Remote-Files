@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SanStudio · File Server</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+/* ── Reset & Variables ─────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:       #0a0a0f;
+  --bg2:      #111118;
+  --bg3:      #18181f;
+  --border:   #23232e;
+  --accent:   #f5a623;
+  --accent2:  #e07b1a;
+  --dim:      #555566;
+  --muted:    #888899;
+  --text:     #e8e8f0;
+  --white:    #ffffff;
+  --danger:   #e05555;
+  --green:    #5be082;
+  --radius:   12px;
+  --shadow:   0 8px 32px rgba(0,0,0,.6);
+}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Syne',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  display:flex;flex-direction:column;
+  overflow-x:hidden;
+}
+
+/* ── Noise texture overlay ─────────────────────────────────── */
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  pointer-events:none;z-index:0;opacity:.4;
+}
+
+/* ── Header ────────────────────────────────────────────────── */
+header{
+  position:sticky;top:0;z-index:100;
+  background:rgba(10,10,15,.85);
+  backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+  padding:0 32px;
+  display:flex;align-items:center;gap:24px;
+  height:64px;
+}
+.logo{
+  font-size:1.2rem;font-weight:800;letter-spacing:-.02em;
+  color:var(--white);white-space:nowrap;
+  display:flex;align-items:center;gap:8px;
+}
+.logo span{color:var(--accent)}
+.logo svg{width:28px;height:28px}
+
+.search-wrap{
+  flex:1;max-width:480px;
+  position:relative;
+}
+.search-wrap input{
+  width:100%;
+  background:var(--bg3);
+  border:1px solid var(--border);
+  border-radius:8px;
+  color:var(--text);
+  font-family:'DM Mono',monospace;
+  font-size:.85rem;
+  padding:9px 14px 9px 38px;
+  outline:none;
+  transition:border .2s;
+}
+.search-wrap input:focus{border-color:var(--accent)}
+.search-wrap svg{
+  position:absolute;left:12px;top:50%;transform:translateY(-50%);
+  width:16px;height:16px;stroke:var(--dim);pointer-events:none;
+}
+.stats{
+  margin-left:auto;font-family:'DM Mono',monospace;
+  font-size:.75rem;color:var(--muted);white-space:nowrap;
+}
+.logout{
+  font-size:.78rem;font-weight:700;color:var(--muted);text-decoration:none;
+  border:1px solid var(--border);border-radius:6px;padding:6px 12px;white-space:nowrap;
+}
+.logout:hover{color:var(--danger);border-color:var(--danger)}
+
+/* ── Breadcrumb ────────────────────────────────────────────── */
+.breadcrumb{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  padding:14px 32px;
+  font-family:'DM Mono',monospace;font-size:.8rem;color:var(--muted);
+  position:relative;z-index:1;
+}
+.breadcrumb a{color:var(--accent);text-decoration:none}
+.breadcrumb a:hover{text-decoration:underline}
+.breadcrumb .sep{color:var(--dim)}
+
+/* ── Main grid ─────────────────────────────────────────────── */
+main{flex:1;padding:0 32px 48px;position:relative;z-index:1}
+
+/* ── View controls ─────────────────────────────────────────── */
+.controls{
+  display:flex;align-items:center;gap:12px;margin-bottom:20px;
+}
+.view-btns{display:flex;gap:4px}
+.view-btn{
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:6px;padding:6px 10px;cursor:pointer;
+  color:var(--muted);transition:all .2s;
+}
+.view-btn.active,.view-btn:hover{
+  background:var(--accent);border-color:var(--accent);color:#000;
+}
+.sort-sel{
+  background:var(--bg3);border:1px solid var(--border);
+  border-radius:6px;padding:6px 10px;color:var(--text);
+  font-family:'DM Mono',monospace;font-size:.8rem;outline:none;cursor:pointer;
+}
+.filter-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.filter-tab{
+  padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:700;
+  border:1px solid var(--border);background:transparent;
+  color:var(--muted);cursor:pointer;transition:all .2s;letter-spacing:.05em;
+}
+.filter-tab.active,.filter-tab:hover{
+  background:var(--accent);border-color:var(--accent);color:#000;
+}
+
+/* ── File Grid ─────────────────────────────────────────────── */
+#file-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+  gap:16px;
+}
+#file-grid.list-view{
+  grid-template-columns:1fr;gap:4px;
+}
+
+.file-card{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:20px 16px 16px;
+  cursor:pointer;
+  transition:transform .18s, border-color .18s, box-shadow .18s;
+  display:flex;flex-direction:column;gap:10px;
+  position:relative;overflow:hidden;
+}
+.file-card::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(245,166,35,.06) 0%,transparent 60%);
+  opacity:0;transition:opacity .2s;pointer-events:none;
+}
+.file-card:hover{
+  border-color:var(--accent);
+  transform:translateY(-3px);
+  box-shadow:0 12px 36px rgba(245,166,35,.12);
+}
+.file-card:hover::after{opacity:1}
+
+/* List view card */
+#file-grid.list-view .file-card{
+  flex-direction:row;align-items:center;
+  padding:12px 16px;gap:14px;
+  border-radius:8px;
+}
+#file-grid.list-view .file-card:hover{transform:translateX(4px)}
+#file-grid.list-view .file-icon{font-size:1.4rem;min-width:32px;text-align:center}
+#file-grid.list-view .file-name{font-size:.9rem;flex:1}
+#file-grid.list-view .file-meta{flex-direction:row;gap:16px;margin-top:0}
+#file-grid.list-view .file-size{margin-left:auto}
+#file-grid.list-view .card-actions{flex-direction:row;margin-top:0}
+
+.file-icon{font-size:2.4rem;text-align:center;line-height:1}
+.file-name{
+  font-size:.85rem;font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  color:var(--text);
+}
+.file-meta{display:flex;flex-direction:column;gap:2px}
+.file-size,.file-type{
+  font-family:'DM Mono',monospace;font-size:.72rem;color:var(--muted);
+}
+.file-type{text-transform:uppercase;letter-spacing:.06em;color:var(--dim)}
+
+.card-actions{
+  display:flex;gap:8px;margin-top:auto;
+}
+.btn{
+  flex:1;padding:7px 8px;border-radius:6px;border:none;
+  font-family:'Syne',sans-serif;font-size:.78rem;font-weight:700;
+  cursor:pointer;transition:all .15s;text-align:center;
+}
+.btn-play{background:var(--accent);color:#000}
+.btn-play:hover{background:var(--accent2)}
+.btn-dl{background:var(--bg3);color:var(--muted);border:1px solid var(--border)}
+.btn-dl:hover{background:var(--border);color:var(--text)}
+.btn-icon{
+  padding:7px 10px;flex:0;
+  background:var(--bg3);color:var(--muted);border:1px solid var(--border);
+}
+.btn-icon:hover{background:var(--border);color:var(--accent)}
+
+/* Folder card */
+.file-card.folder{border-color:rgba(245,166,35,.2)}
+.file-card.folder:hover{border-color:var(--accent)}
+
+/* Type badges */
+.type-badge{
+  position:absolute;top:10px;right:10px;
+  font-family:'DM Mono',monospace;font-size:.65rem;font-weight:500;
+  padding:2px 7px;border-radius:4px;text-transform:uppercase;letter-spacing:.05em;
+}
+.badge-video{background:rgba(229,57,53,.15);color:#ef5350}
+.badge-audio{background:rgba(91,224,130,.12);color:var(--green)}
+.badge-image{background:rgba(66,165,245,.12);color:#42a5f5}
+.badge-pdf  {background:rgba(239,83,80,.12); color:#ef5350}
+.badge-zip  {background:rgba(255,167,38,.12);color:#ffa726}
+.badge-code {background:rgba(171,71,188,.12);color:#ab47bc}
+.badge-doc  {background:rgba(38,166,154,.12);color:#26a69a}
+.badge-text {background:rgba(120,144,156,.12);color:#78909c}
+.badge-file {background:rgba(80,80,100,.2);  color:var(--dim)}
+.badge-folder{display:none}
+
+/* ── Empty / Error states ───────────────────────────────────── */
+.empty-state{
+  text-align:center;padding:80px 20px;
+  display:flex;flex-direction:column;align-items:center;gap:16px;
+}
+.empty-state .icon{font-size:3.5rem;opacity:.3}
+.empty-state p{color:var(--muted);font-size:.9rem}
+
+/* ── Media Modal ────────────────────────────────────────────── */
+#modal-overlay{
+  display:none;position:fixed;inset:0;z-index:1000;
+  background:rgba(0,0,0,.92);
+  backdrop-filter:blur(10px);
+  align-items:center;justify-content:center;
+  padding:24px;
+}
+#modal-overlay.open{display:flex;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+#modal-box{
+  background:var(--bg2);
+  border:1px solid var(--border);
+  border-radius:16px;
+  width:100%;max-width:960px;
+  max-height:92vh;
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  box-shadow:0 32px 80px rgba(0,0,0,.8);
+  animation:slideUp .25s ease;
+}
+@keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+.modal-header{
+  display:flex;align-items:center;gap:12px;
+  padding:16px 20px;
+  border-bottom:1px solid var(--border);
+  min-height:60px;
+}
+.modal-title{
+  flex:1;font-weight:700;font-size:.95rem;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.modal-close{
+  background:none;border:none;cursor:pointer;
+  color:var(--muted);font-size:1.4rem;line-height:1;
+  padding:4px 8px;border-radius:6px;transition:all .15s;
+}
+.modal-close:hover{background:var(--bg3);color:var(--danger)}
+.modal-dl-btn{
+  padding:8px 18px;border-radius:8px;border:none;
+  background:var(--accent);color:#000;
+  font-family:'Syne',sans-serif;font-weight:700;font-size:.82rem;
+  cursor:pointer;transition:background .15s;display:flex;align-items:center;gap:6px;
+}
+.modal-dl-btn:hover{background:var(--accent2)}
+
+.modal-body{
+  flex:1;overflow:auto;
+  display:flex;align-items:center;justify-content:center;
+  padding:20px;background:var(--bg);
+}
+#media-video{
+  width:100%;max-height:70vh;border-radius:8px;outline:none;
+  background:#000;
+}
+#media-audio{width:100%;max-width:520px}
+#media-image{
+  max-width:100%;max-height:70vh;
+  border-radius:8px;object-fit:contain;
+}
+#media-other{
+  text-align:center;padding:40px;
+  display:flex;flex-direction:column;align-items:center;gap:16px;
+}
+#media-other .big-icon{font-size:4rem}
+#media-other p{color:var(--muted);font-size:.9rem;max-width:320px}
+
+/* ── Loading spinner ─────────────────────────────────────────── */
+.spinner{
+  width:36px;height:36px;border-radius:50%;
+  border:3px solid var(--border);border-top-color:var(--accent);
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Progress bar ───────────────────────────────────────────── */
+.progress-bar{
+  height:2px;background:var(--border);margin-bottom:20px;border-radius:1px;
+  overflow:hidden;
+}
+.progress-bar .fill{
+  height:100%;background:var(--accent);
+  transition:width .4s;width:0;
+}
+
+/* ── Toast ──────────────────────────────────────────────────── */
+#toast{
+  position:fixed;bottom:32px;right:32px;z-index:9999;
+  background:var(--bg3);border:1px solid var(--border);
+  border-left:3px solid var(--accent);
+  border-radius:8px;padding:12px 20px;
+  font-size:.85rem;color:var(--text);
+  transform:translateX(140%);
+  transition:transform .3s ease;
+  box-shadow:var(--shadow);
+}
+#toast.show{transform:translateX(0)}
+
+/* ── Footer ─────────────────────────────────────────────────── */
+footer{
+  border-top:1px solid var(--border);
+  padding:20px 32px;
+  display:flex;align-items:center;justify-content:center;
+  gap:8px;font-size:.82rem;color:var(--dim);
+  position:relative;z-index:1;
+}
+footer a{
+  color:var(--accent);text-decoration:none;font-weight:700;
+  transition:color .15s;
+}
+footer a:hover{color:var(--accent2);text-decoration:underline}
+
+/* ── Scrollbar ──────────────────────────────────────────────── */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--dim)}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media(max-width:600px){
+  header{padding:0 16px}
+  main,.breadcrumb{padding-left:16px;padding-right:16px}
+  #file-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .filter-tabs{display:none}
+  .stats{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="2" y="2" width="24" height="24" rx="6" fill="#f5a623" opacity=".15"/>
+      <path d="M6 8h16M6 14h10M6 20h13" stroke="#f5a623" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="21" cy="20" r="3" fill="#f5a623"/>
+    </svg>
+    San<span>Studio</span>&nbsp;Files
+  </div>
+
+  <div class="search-wrap">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" id="search-input" placeholder="Search files…" autocomplete="off"/>
+  </div>
+
+  <div class="stats" id="stats-bar">Loading…</div>
+  <a class="logout" href="/logout" title="Log out">Logout</a>
+</header>
+
+<!-- ── Breadcrumb ─────────────────────────────────────────────── -->
+<nav class="breadcrumb" id="breadcrumb">
+  <a href="#" data-path="">⌂ Root</a>
+</nav>
+
+<!-- ── Main ──────────────────────────────────────────────────── -->
+<main>
+  <div class="progress-bar"><div class="fill" id="progress-fill"></div></div>
+
+  <div class="controls">
+    <div class="view-btns">
+      <button class="view-btn active" id="btn-grid" title="Grid view">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="0" y="0" width="6" height="6" rx="1"/><rect x="10" y="0" width="6" height="6" rx="1"/><rect x="0" y="10" width="6" height="6" rx="1"/><rect x="10" y="10" width="6" height="6" rx="1"/></svg>
+      </button>
+      <button class="view-btn" id="btn-list" title="List view">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><rect x="0" y="1" width="16" height="2" rx="1"/><rect x="0" y="7" width="16" height="2" rx="1"/><rect x="0" y="13" width="16" height="2" rx="1"/></svg>
+      </button>
+    </div>
+
+    <select class="sort-sel" id="sort-sel">
+      <option value="name-asc">Name ↑</option>
+      <option value="name-desc">Name ↓</option>
+      <option value="size-desc">Size ↓</option>
+      <option value="size-asc">Size ↑</option>
+    </select>
+
+    <div class="filter-tabs">
+      <button class="filter-tab active" data-type="all">ALL</button>
+      <button class="filter-tab" data-type="video">VIDEO</button>
+      <button class="filter-tab" data-type="audio">AUDIO</button>
+      <button class="filter-tab" data-type="image">IMAGE</button>
+      <button class="filter-tab" data-type="pdf">PDF</button>
+      <button class="filter-tab" data-type="zip">ZIP</button>
+      <button class="filter-tab" data-type="folder">FOLDER</button>
+    </div>
+  </div>
+
+  <div id="file-grid"></div>
+</main>
+
+<!-- ── Media Modal ────────────────────────────────────────────── -->
+<div id="modal-overlay">
+  <div id="modal-box">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">File</span>
+      <button class="modal-dl-btn" id="modal-dl">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 3v13M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>
+        Download
+      </button>
+      <button class="modal-close" id="modal-close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      <div class="spinner"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ─────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<!-- ── Footer ────────────────────────────────────────────────── -->
+<footer>
+  <span>Developed by</span>
+  <a href="https://a-santhosh-hub.github.io/in/" target="_blank" rel="noopener noreferrer">SanStudio</a>
+  <span>· Secure File Server</span>
+</footer>
+
+<!-- ── JS ────────────────────────────────────────────────────── -->
+<script>
+const ICONS = {
+  folder:"📁", video:"🎬", audio:"🎵", image:"🖼️",
+  pdf:"📄", zip:"🗜️", code:"💻", text:"📝", doc:"📊", file:"📎"
+};
+const PLAYABLE_VIDEO = ["mp4","webm","mkv","mov","m4v","ogv"];
+const PLAYABLE_AUDIO = ["mp3","ogg","wav","aac","flac","m4a","opus"];
+const VIEWABLE_IMAGE = ["jpg","jpeg","png","gif","webp","bmp","svg","avif"];
+
+let currentPath = "";
+let allItems = [];
+let activeFilter = "all";
+let activeSort   = "name-asc";
+let isListView   = false;
+let currentFile  = null;
+
+function esc(s){
+  return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+/* ── Fetch & render ─────────────────────────────── */
+async function loadPath(path=""){
+  currentPath = path.replace(/\/+/g,"/").replace(/^\//,"");
+  setProgress(20);
+  document.getElementById("file-grid").innerHTML =
+    `<div style="grid-column:1/-1;display:flex;justify-content:center;padding:60px"><div class="spinner"></div></div>`;
+  try{
+    const res = await fetch(`/api/files?path=${encodeURIComponent(currentPath)}`);
+    if(res.status===401){location.href="/login";return}
+    const data = await res.json();
+    if(!data.ok) throw new Error(data.error);
+    allItems = data.items;
+    setProgress(80);
+    renderBreadcrumb();
+    renderFiles();
+    setProgress(100);
+    setTimeout(()=>setProgress(0),400);
+  }catch(e){
+    document.getElementById("file-grid").innerHTML =
+      `<div class="empty-state" style="grid-column:1/-1"><div class="icon">⚠️</div><p>${esc(e.message)}</p></div>`;
+    setProgress(0);
+  }
+}
+
+function setProgress(pct){
+  document.getElementById("progress-fill").style.width = pct+"%";
+}
+
+function renderBreadcrumb(){
+  const bc = document.getElementById("breadcrumb");
+  const parts = currentPath ? currentPath.split("/").filter(Boolean) : [];
+  let html = `<a href="#" data-path="">⌂ Root</a>`;
+  let built = "";
+  for(const p of parts){
+    built = built ? built+"/"+p : p;
+    const snap = built;
+    html += `<span class="sep">/</span><a href="#" data-path="${esc(snap)}">${esc(p)}</a>`;
+  }
+  bc.innerHTML = html;
+  bc.querySelectorAll("a").forEach(a=>{
+    a.addEventListener("click",e=>{e.preventDefault();loadPath(a.dataset.path)});
+  });
+}
+
+function renderFiles(){
+  const q = document.getElementById("search-input").value.toLowerCase();
+  let items = allItems.filter(f=>{
+    if(activeFilter!=="all" && f.type!==activeFilter) return false;
+    if(q && !f.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  // Sort
+  const [sortKey,sortDir] = activeSort.split("-");
+  items.sort((a,b)=>{
+    // Folders always first
+    if(a.is_dir!==b.is_dir) return a.is_dir?-1:1;
+    let va,vb;
+    if(sortKey==="name"){va=a.name.toLowerCase();vb=b.name.toLowerCase()}
+    else{va=a.size_raw;vb=b.size_raw}
+    if(va<vb) return sortDir==="asc"?-1:1;
+    if(va>vb) return sortDir==="asc"?1:-1;
+    return 0;
+  });
+
+  // Stats
+  const total = allItems.length;
+  const folders = allItems.filter(f=>f.is_dir).length;
+  const files   = total - folders;
+  document.getElementById("stats-bar").textContent =
+    `${folders} folder${folders!==1?"s":""} · ${files} file${files!==1?"s":""}`;
+
+  if(!items.length){
+    document.getElementById("file-grid").innerHTML =
+      `<div class="empty-state" style="grid-column:1/-1">
+        <div class="icon">🔍</div><p>No files found</p></div>`;
+    return;
+  }
+
+  const grid = document.getElementById("file-grid");
+  grid.innerHTML = "";
+  items.forEach(f=>grid.appendChild(buildCard(f)));
+}
+
+function buildCard(f){
+  const card = document.createElement("div");
+  card.className = "file-card"+(f.is_dir?" folder":"");
+
+  const canPlay = !f.is_dir && (
+    PLAYABLE_VIDEO.includes(f.ext) || PLAYABLE_AUDIO.includes(f.ext) || VIEWABLE_IMAGE.includes(f.ext)
+  );
+
+  card.innerHTML = `
+    <span class="type-badge badge-${f.type}">${f.type}</span>
+    <div class="file-icon">${ICONS[f.type]||"📎"}</div>
+    <div class="file-name" title="${esc(f.name)}">${esc(f.name)}</div>
+    <div class="file-meta">
+      ${f.size?`<span class="file-size">${f.size}</span>`:""}
+      <span class="file-type">${f.is_dir?"Directory":esc(f.ext||"file")}</span>
+    </div>
+    ${f.is_dir ? "" : `
+    <div class="card-actions">
+      ${canPlay?`<button class="btn btn-play" data-action="play">▶ Open</button>`:""}
+      <button class="btn btn-dl ${canPlay?"btn-icon":"btn-dl"}" data-action="dl" title="Download">
+        ${canPlay
+          ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 3v13M7 11l5 5 5-5"/><path d="M4 20h16"/></svg>`
+          : "⬇ Download"}
+      </button>
+    </div>`}
+  `;
+
+  if(f.is_dir){
+    card.addEventListener("click",()=>loadPath(f.path));
+  } else {
+    card.querySelector("[data-action='dl']")?.addEventListener("click",e=>{
+      e.stopPropagation();downloadFile(f);
+    });
+    if(canPlay){
+      card.querySelector("[data-action='play']")?.addEventListener("click",e=>{
+        e.stopPropagation();openModal(f);
+      });
+      card.addEventListener("dblclick",()=>openModal(f));
+    } else {
+      card.addEventListener("click",()=>downloadFile(f));
+    }
+  }
+  return card;
+}
+
+/* ── Modal ──────────────────────────────────────── */
+function openModal(f){
+  currentFile = f;
+  document.getElementById("modal-title").textContent = f.name;
+  document.getElementById("modal-overlay").classList.add("open");
+  document.getElementById("modal-body").innerHTML =
+    `<div class="spinner"></div>`;
+  document.getElementById("modal-dl").onclick = ()=>downloadFile(f);
+
+  const url = `/stream/${encodeURIComponent(f.path).replace(/%2F/g,"/")}`;
+  let body = "";
+
+  if(PLAYABLE_VIDEO.includes(f.ext)){
+    body = `<video id="media-video" controls autoplay playsinline preload="metadata" src="${esc(url)}">
+      Your browser does not support this video format.
+    </video>`;
+  } else if(PLAYABLE_AUDIO.includes(f.ext)){
+    body = `<div style="text-align:center;display:flex;flex-direction:column;align-items:center;gap:20px">
+      <div style="font-size:4rem">🎵</div>
+      <p style="color:var(--muted);font-size:.9rem">${esc(f.name)}</p>
+      <audio id="media-audio" controls autoplay style="width:100%;max-width:520px" src="${esc(url)}">
+      </audio></div>`;
+  } else if(VIEWABLE_IMAGE.includes(f.ext)){
+    body = `<img id="media-image" src="${esc(url)}" alt="${esc(f.name)}" loading="lazy"/>`;
+  } else {
+    body = `<div id="media-other">
+      <div class="big-icon">${ICONS[f.type]||"📎"}</div>
+      <p>${esc(f.name)}</p>
+      <p style="color:var(--dim)">Preview not available for this file type.</p>
+      <button class="btn btn-play" style="margin-top:12px;max-width:200px" onclick="downloadFile(currentFile)">⬇ Download File</button>
+    </div>`;
+  }
+  document.getElementById("modal-body").innerHTML = body;
+}
+
+function closeModal(){
+  document.getElementById("modal-overlay").classList.remove("open");
+  // Stop media
+  const v = document.getElementById("media-video");
+  const a = document.getElementById("media-audio");
+  if(v){v.pause();v.src=""}
+  if(a){a.pause();a.src=""}
+}
+
+/* ── Download ────────────────────────────────────── */
+function downloadFile(f){
+  const a = document.createElement("a");
+  a.href = `/download/${encodeURIComponent(f.path).replace(/%2F/g,"/")}`;
+  a.download = f.name;
+  a.click();
+  showToast(`⬇ Downloading  ${f.name}`);
+}
+
+/* ── Toast ───────────────────────────────────────── */
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"),2800);
+}
+
+/* ── Controls ────────────────────────────────────── */
+document.getElementById("btn-grid").addEventListener("click",()=>{
+  isListView=false;
+  document.getElementById("file-grid").classList.remove("list-view");
+  document.getElementById("btn-grid").classList.add("active");
+  document.getElementById("btn-list").classList.remove("active");
+});
+document.getElementById("btn-list").addEventListener("click",()=>{
+  isListView=true;
+  document.getElementById("file-grid").classList.add("list-view");
+  document.getElementById("btn-list").classList.add("active");
+  document.getElementById("btn-grid").classList.remove("active");
+});
+document.getElementById("sort-sel").addEventListener("change",e=>{
+  activeSort=e.target.value;renderFiles();
+});
+document.getElementById("search-input").addEventListener("input",renderFiles);
+document.querySelectorAll(".filter-tab").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    document.querySelectorAll(".filter-tab").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    activeFilter=btn.dataset.type;
+    renderFiles();
+  });
+});
+document.getElementById("modal-close").addEventListener("click",closeModal);
+document.getElementById("modal-overlay").addEventListener("click",e=>{
+  if(e.target===document.getElementById("modal-overlay")) closeModal();
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape") closeModal()});
+
+/* ── Boot ────────────────────────────────────────── */
+loadPath("");
+</script>
+</body>
+</html>

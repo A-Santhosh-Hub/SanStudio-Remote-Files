@@ -1,0 +1,13 @@
+# Secrets — never commit
+automation/config.json
+server/password.txt
+server/.secret_key
+
+# Your files
+server/uploads/
+
+# Runtime
+*.log
+*.log.*
+automation/pids.json
+__pycache__/
